@@ -1,5 +1,5 @@
 /**
- * Groceria Backend  server.js
+ * Groceria Backend - server.js
  * helmet | rate-limit | mongo-sanitize | xss | CORS | JWT | bcrypt | errorHandler
  */
 
@@ -23,9 +23,7 @@ const { errorHandler, notFound } = require('./Middleware/errorMiddleware');
 const app = express();
 
 // 1. SECURITY HEADERS
-app.use(helmet({
-  crossOriginResourcePolicy: { policy: 'cross-origin' },
-}));
+app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 
 // 2. CORS
 const allowedOrigins = [
@@ -49,15 +47,10 @@ app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 
 // 4. NoSQL INJECTION PROTECTION
-// Express 5: req.query is read-only, so we manually sanitize only req.body and req.params
-app.use(function(req, res, next) {
-  mongoSanitize.sanitize(req.body,   { replaceWith: '_' });
-  mongoSanitize.sanitize(req.params, { replaceWith: '_' });
-  next();
-});
+app.use(mongoSanitize({ replaceWith: '_' }));
 
 // 5. XSS PROTECTION
-const sanitizeObject = function(obj) {
+const sanitizeObject = (obj) => {
   if (!obj || typeof obj !== 'object') return obj;
   const clean = {};
   for (const key of Object.keys(obj)) {
@@ -65,7 +58,7 @@ const sanitizeObject = function(obj) {
     if (typeof val === 'string') {
       clean[key] = xss(val.trim());
     } else if (Array.isArray(val)) {
-      clean[key] = val.map(function(v) { return typeof v === 'string' ? xss(v.trim()) : v; });
+      clean[key] = val.map((v) => (typeof v === 'string' ? xss(v.trim()) : v));
     } else if (typeof val === 'object' && val !== null) {
       clean[key] = sanitizeObject(val);
     } else {
@@ -75,7 +68,7 @@ const sanitizeObject = function(obj) {
   return clean;
 };
 
-app.use(function(req, res, next) {
+app.use((req, res, next) => {
   if (req.body && Object.keys(req.body).length > 0) {
     req.body = sanitizeObject(req.body);
   }
@@ -88,7 +81,7 @@ const authLimiter = rateLimit({
   max: 10,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { success: false, message: 'Too many attempts from this IP. Please try again after 15 minutes.' },
+  message: { success: false, message: 'Too many attempts. Please try again after 15 minutes.' },
 });
 
 const generalLimiter = rateLimit({
@@ -102,13 +95,12 @@ const generalLimiter = rateLimit({
 
 app.use('/api/user/login',           authLimiter);
 app.use('/api/user/register',        authLimiter);
-app.use('/api/user/signup',          authLimiter);
 app.use('/api/user/forgot-password', authLimiter);
 app.use('/api/user/reset-password',  authLimiter);
 app.use('/api', generalLimiter);
 
 // HEALTH CHECK
-app.get('/api/health', function(req, res) {
+app.get('/api/health', (req, res) => {
   res.status(200).json({
     success: true,
     message: 'Groceria API is running',
@@ -129,7 +121,7 @@ app.use(notFound);
 app.use(errorHandler);
 
 // DATABASE CONNECTION
-const connectDB = async function() {
+const connectDB = async () => {
   try {
     const conn = await mongoose.connect(process.env.MONGO_URL, {
       serverSelectionTimeoutMS: 10000,
@@ -146,6 +138,6 @@ const connectDB = async function() {
 connectDB();
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, function() {
+app.listen(PORT, () => {
   console.log('Groceria server running on port ' + PORT);
 });
