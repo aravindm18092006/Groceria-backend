@@ -2,8 +2,9 @@ const crypto = require('crypto');
 const User = require('../Models/UserModel');
 const generateToken = require('../Utils/generateToken');
 const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 
-// --- Mailer helper ----------------------------------------------------------
+// --- Mailer helper (used for existing forgot-password link flow) -------------
 const createTransporter = () =>
   nodemailer.createTransport({
     host: 'smtp.gmail.com',
@@ -13,6 +14,9 @@ const createTransporter = () =>
     auth: { user: process.env.MAIL_USER, pass: process.env.MAIL_PASS },
     tls: { rejectUnauthorized: false },
   });
+
+// --- Resend helper (used for OTP emails) ------------------------------------
+const getResend = () => new Resend(process.env.RESEND_API_KEY);
 
 // --- Register ---------------------------------------------------------------
 const registerUser = async (req, res) => {
@@ -186,20 +190,19 @@ const sendOtp = async (req, res) => {
     if (!email) return res.status(400).json({ success: false, message: 'Email is required' });
 
     const user = await User.findOne({ email: email.toLowerCase() });
-    // Always respond success to prevent email enumeration
     if (!user) return res.status(200).json({ success: true, message: 'If this email is registered, an OTP has been sent.' });
 
     // Generate 6-digit OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     user.otp = otp;
-    user.otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+    user.otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
     await user.save({ validateBeforeSave: false });
 
-    // Send OTP email
+    // Send via Resend
     try {
-      const transporter = createTransporter();
-      await transporter.sendMail({
-        from: `"Groceria Support" <${process.env.MAIL_USER}>`,
+      const resend = getResend();
+      await resend.emails.send({
+        from: 'Groceria <onboarding@resend.dev>',
         to: user.email,
         subject: 'Groceria — Your OTP for Password Reset',
         html: `
@@ -219,18 +222,17 @@ const sendOtp = async (req, res) => {
               <p style="color:#888;font-size:13px;">If you did not request this, please ignore this email. Your account remains secure.</p>
             </div>
             <div style="background:#f5f5f5;padding:16px;text-align:center;">
-              <p style="color:#aaa;font-size:12px;margin:0;">© ${new Date().getFullYear()} Groceria. All rights reserved.</p>
+              <p style="color:#aaa;font-size:12px;margin:0;">&copy; ${new Date().getFullYear()} Groceria. All rights reserved.</p>
             </div>
           </div>
         `,
       });
       res.status(200).json({ success: true, message: 'OTP sent to your email address.' });
     } catch (mailErr) {
-      // Clear OTP on mail failure
       user.otp = undefined;
       user.otpExpiry = undefined;
       await user.save({ validateBeforeSave: false });
-      console.error('OTP mail failed:', mailErr.message);
+      console.error('Resend OTP failed:', mailErr.message);
       res.status(500).json({ success: false, message: 'Failed to send OTP email. Please try again.' });
     }
   } catch (error) {
