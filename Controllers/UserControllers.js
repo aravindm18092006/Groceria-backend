@@ -2,9 +2,8 @@ const crypto = require('crypto');
 const User = require('../Models/UserModel');
 const generateToken = require('../Utils/generateToken');
 const nodemailer = require('nodemailer');
-const { Resend } = require('resend');
 
-// --- Mailer helper (used for existing forgot-password link flow) -------------
+// --- Mailer helper ----------------------------------------------------------
 const createTransporter = () =>
   nodemailer.createTransport({
     host: 'smtp.gmail.com',
@@ -14,9 +13,6 @@ const createTransporter = () =>
     auth: { user: process.env.MAIL_USER, pass: process.env.MAIL_PASS },
     tls: { rejectUnauthorized: false },
   });
-
-// --- Resend helper (used for OTP emails) ------------------------------------
-const getResend = () => new Resend(process.env.RESEND_API_KEY);
 
 // --- Register ---------------------------------------------------------------
 const registerUser = async (req, res) => {
@@ -198,17 +194,17 @@ const sendOtp = async (req, res) => {
     user.otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
     await user.save({ validateBeforeSave: false });
 
-    // Send via Resend
+    // Send via Nodemailer (Gmail)
     try {
-      const resend = getResend();
-      await resend.emails.send({
-        from: 'Groceria <onboarding@resend.dev>',
+      const transporter = createTransporter();
+      await transporter.sendMail({
+        from: `"Groceria Support" <${process.env.MAIL_USER}>`,
         to: user.email,
         subject: 'Groceria — Your OTP for Password Reset',
         html: `
           <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;border:1px solid #e0e0e0;border-radius:8px;overflow:hidden;">
             <div style="background:#1976d2;padding:24px;text-align:center;">
-              <h1 style="color:white;margin:0;font-size:24px;">🛒 Groceria</h1>
+              <h1 style="color:white;margin:0;font-size:24px;">&#128722; Groceria</h1>
               <p style="color:#bbdefb;margin:6px 0 0;">Password Reset OTP</p>
             </div>
             <div style="padding:32px;">
@@ -232,7 +228,7 @@ const sendOtp = async (req, res) => {
       user.otp = undefined;
       user.otpExpiry = undefined;
       await user.save({ validateBeforeSave: false });
-      console.error('Resend OTP failed:', mailErr.message);
+      console.error('OTP mail failed:', mailErr.message);
       res.status(500).json({ success: false, message: 'Failed to send OTP email. Please try again.' });
     }
   } catch (error) {
