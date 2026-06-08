@@ -101,6 +101,9 @@ app.use('/api/user/login',           authLimiter);
 app.use('/api/user/register',        authLimiter);
 app.use('/api/user/forgot-password', authLimiter);
 app.use('/api/user/reset-password',  authLimiter);
+app.use('/api/user/send-otp',        authLimiter);
+app.use('/api/user/verify-otp',      authLimiter);
+app.use('/api/user/reset-password-otp', authLimiter);
 app.use('/api', generalLimiter);
 
 // HEALTH CHECK

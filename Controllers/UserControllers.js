@@ -78,7 +78,7 @@ const updateUserProfile = async (req, res) => {
   }
 };
 
-// --- Forgot Password — send reset link via email ----------------------------
+// --- Forgot Password ï¿½ send reset link via email ----------------------------
 const forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
@@ -99,7 +99,7 @@ const forgotPassword = async (req, res) => {
       await transporter.sendMail({
         from: `"Groceria Support" <${process.env.MAIL_USER}>`,
         to: user.email,
-        subject: 'Groceria — Reset Your Password',
+        subject: 'Groceria ï¿½ Reset Your Password',
         html: `
           <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;border:1px solid #e0e0e0;border-radius:8px;overflow:hidden;">
             <div style="background:#1976d2;color:white;padding:20px;">
@@ -179,6 +179,126 @@ const resetPassword = async (req, res) => {
   return resetPasswordByToken(req, res);
 };
 
+// --- Send OTP ---------------------------------------------------------------
+const sendOtp = async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ success: false, message: 'Email is required' });
+
+    const user = await User.findOne({ email: email.toLowerCase() });
+    // Always respond success to prevent email enumeration
+    if (!user) return res.status(200).json({ success: true, message: 'If this email is registered, an OTP has been sent.' });
+
+    // Generate 6-digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    user.otp = otp;
+    user.otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+    await user.save({ validateBeforeSave: false });
+
+    // Send OTP email
+    try {
+      const transporter = createTransporter();
+      await transporter.sendMail({
+        from: `"Groceria Support" <${process.env.MAIL_USER}>`,
+        to: user.email,
+        subject: 'Groceria â€” Your OTP for Password Reset',
+        html: `
+          <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;border:1px solid #e0e0e0;border-radius:8px;overflow:hidden;">
+            <div style="background:#1976d2;padding:24px;text-align:center;">
+              <h1 style="color:white;margin:0;font-size:24px;">ðŸ›’ Groceria</h1>
+              <p style="color:#bbdefb;margin:6px 0 0;">Password Reset OTP</p>
+            </div>
+            <div style="padding:32px;">
+              <p style="color:#12254a;font-size:16px;">Hi <strong>${user.name}</strong>,</p>
+              <p style="color:#556b8c;">Use the OTP below to reset your Groceria account password.</p>
+              <div style="background:#f0f6ff;border:2px dashed #1976d2;border-radius:12px;padding:24px;text-align:center;margin:24px 0;">
+                <p style="color:#556b8c;font-size:13px;margin:0 0 8px;">Your One-Time Password</p>
+                <p style="font-size:42px;font-weight:900;letter-spacing:10px;color:#1976d2;margin:0;">${otp}</p>
+                <p style="color:#888;font-size:12px;margin:12px 0 0;">Expires in <strong>10 minutes</strong></p>
+              </div>
+              <p style="color:#888;font-size:13px;">If you did not request this, please ignore this email. Your account remains secure.</p>
+            </div>
+            <div style="background:#f5f5f5;padding:16px;text-align:center;">
+              <p style="color:#aaa;font-size:12px;margin:0;">Â© ${new Date().getFullYear()} Groceria. All rights reserved.</p>
+            </div>
+          </div>
+        `,
+      });
+      res.status(200).json({ success: true, message: 'OTP sent to your email address.' });
+    } catch (mailErr) {
+      // Clear OTP on mail failure
+      user.otp = undefined;
+      user.otpExpiry = undefined;
+      await user.save({ validateBeforeSave: false });
+      console.error('OTP mail failed:', mailErr.message);
+      res.status(500).json({ success: false, message: 'Failed to send OTP email. Please try again.' });
+    }
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// --- Verify OTP --------------------------------------------------------------
+const verifyOtp = async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+    if (!email || !otp) return res.status(400).json({ success: false, message: 'Email and OTP are required' });
+
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) return res.status(400).json({ success: false, message: 'Invalid request' });
+
+    if (!user.otp || !user.otpExpiry)
+      return res.status(400).json({ success: false, message: 'No OTP found. Please request a new one.' });
+
+    if (user.otpExpiry < Date.now())
+      return res.status(400).json({ success: false, message: 'OTP has expired. Please request a new one.' });
+
+    if (user.otp !== otp.trim())
+      return res.status(400).json({ success: false, message: 'Invalid OTP. Please check and try again.' });
+
+    res.status(200).json({ success: true, message: 'OTP verified successfully.' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// --- Reset Password via OTP --------------------------------------------------
+const resetPasswordWithOtp = async (req, res) => {
+  try {
+    const { email, otp, newPassword } = req.body;
+    if (!email || !otp || !newPassword)
+      return res.status(400).json({ success: false, message: 'Email, OTP and new password are required' });
+
+    if (newPassword.length < 6)
+      return res.status(400).json({ success: false, message: 'Password must be at least 6 characters' });
+
+    const user = await User.findOne({ email: email.toLowerCase() }).select('+password');
+    if (!user) return res.status(400).json({ success: false, message: 'Invalid request' });
+
+    if (!user.otp || !user.otpExpiry)
+      return res.status(400).json({ success: false, message: 'No OTP found. Please request a new one.' });
+
+    if (user.otpExpiry < Date.now())
+      return res.status(400).json({ success: false, message: 'OTP has expired. Please request a new one.' });
+
+    if (user.otp !== otp.trim())
+      return res.status(400).json({ success: false, message: 'Invalid OTP.' });
+
+    // Update password and clear OTP
+    user.password = newPassword;
+    user.otp = undefined;
+    user.otpExpiry = undefined;
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Password reset successfully. You can now log in.',
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 // --- Admin: get all users ----------------------------------------------------
 const getAllUsers = async (req, res) => {
   try {
@@ -222,6 +342,9 @@ module.exports = {
   forgotPassword,
   resetPassword,
   resetPasswordByToken,
+  sendOtp,
+  verifyOtp,
+  resetPasswordWithOtp,
   getAllUsers,
   updateUserRole,
   deleteUser,

@@ -7,6 +7,9 @@ const {
   forgotPassword,
   resetPassword,
   resetPasswordByToken,
+  sendOtp,
+  verifyOtp,
+  resetPasswordWithOtp,
   getAllUsers,
   updateUserRole,
   deleteUser,
@@ -21,8 +24,13 @@ router.post('/login',    loginUser);
 
 // -- Password Reset (public) --------------------------------------------------
 router.post('/forgot-password',        forgotPassword);
-router.post('/reset-password',         resetPassword);          // body: { token, password }
-router.post('/reset-password/:token',  resetPasswordByToken);   // URL token from email link
+router.post('/reset-password',         resetPassword);
+router.post('/reset-password/:token',  resetPasswordByToken);
+
+// -- OTP Password Reset (public) ----------------------------------------------
+router.post('/send-otp',              sendOtp);
+router.post('/verify-otp',            verifyOtp);
+router.post('/reset-password-otp',    resetPasswordWithOtp);
 
 // -- Protected User -----------------------------------------------------------
 router.put('/profile', protect, updateUserProfile);
