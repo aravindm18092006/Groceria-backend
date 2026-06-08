@@ -28,6 +28,7 @@ app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 // 2. CORS
 const allowedOrigins = [
   'http://localhost:3000',
+  'https://groceria-frontend-six.vercel.app',
   process.env.CLIENT_URL,
 ].filter(Boolean);
 
@@ -35,12 +36,15 @@ app.use(cors({
   origin: (origin, callback) => {
     if (!origin) return callback(null, true);
     if (allowedOrigins.includes(origin)) return callback(null, true);
-    callback(new Error('CORS: origin not allowed'));
+    return callback(null, false);
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
+
+// Handle preflight OPTIONS for all routes
+app.options('*', cors());
 
 // 3. BODY PARSER
 app.use(express.json({ limit: '10kb' }));
